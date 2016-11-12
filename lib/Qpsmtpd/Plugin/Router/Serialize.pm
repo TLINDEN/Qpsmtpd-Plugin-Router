@@ -39,13 +39,6 @@ package Qpsmtpd::Plugin::Router::Serialize;
 
 $Qpsmtpd::Plugin::Router::Serialize::VERSION = 0.01;
 
-use Moo;
-use strictures 2;
-use namespace::clean;
-
-
-
-1;
 
 =head1 NAME
 
@@ -66,5 +59,101 @@ Write Qpsmtp::Transaction objects to disk,  support NFS locking, use a
 temporary file in  the same directory and only move  to final filename
 when write ok. Do the reverse on thaw().
 
+=head1 METHODS
+
 =cut
 
+use Qpsmtpd::Transaction;
+use Qpsmtpd::Plugin::Router::FS;
+use Storable qw(freeze thaw);
+use Safe;
+use File::Spec::Functions qw(splitpath file_name_is_absolute catfile catpath);
+
+use Moo;
+use strictures 2;
+use namespace::clean;
+
+with 'Qpsmtpd::Plugin::Router::Role';
+
+=head2 new()
+
+New serializer.
+
+=cut
+
+sub BUILD {
+  my ($self, $args) = @_;
+  my $safe = new Safe;
+  $safe->permit(qw(:default require));
+  local $Storable::Deparse = 1;
+  local $Storable::Eval = sub { $safe->reval($_[0]) };
+}
+
+has fs => (
+           is      => 'ro'
+           builder => sub {
+             return Qpsmtpd::Plugin::Router::FS->new();
+           }
+          );
+
+=head2 freeze($transaction, $file)
+
+Serialize   $transaction  (assumed   to  be   an  Qpsmtpd::Transaction
+instance) to $file, which must be absolute.
+
+=cut
+
+sub freeze {
+  my($self, $transaction, $file) = @_;
+  $self->rst;
+
+  $self->set_spool($file);
+
+  my $dump = freeze($transaction);
+
+  my $ret = $self->fs->put($queuefile, $dump);
+  $self->err($self->fs->err);
+  return $ret;
+}
+
+=head2 thaw($file)
+
+Deserialize from $file, return transaction object.
+
+=cut
+
+sub thaw {
+  my($self, $file) = @_;
+  $self->rst;
+
+  $self->set_spool($file);
+
+  my $code = $self->fs->get($file);
+
+  if (!$code) {
+    $self->err($self->fs->err);
+    return 0;
+  }
+
+  my $transaction = thaw($code);
+  if (!$transaction) {
+    $self->err("failed to thaw() from $file: $!");
+    return 0;
+  }
+
+  return $transaction;
+}
+
+=head2 set_spool($file)
+
+Set FS spooldir from directory of $file path.
+
+=cut
+
+sub set_spool {
+  my($self, $file) = @_;
+  my($vol, $dir, $queuefile) = splitpath($file);
+  $self->fs->spooldir(catpath($vol, $dir));
+}
+
+1;

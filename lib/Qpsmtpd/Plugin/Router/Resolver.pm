@@ -39,11 +39,38 @@ package Qpsmtpd::Plugin::Router::Resolver;
 
 $Qpsmtpd::Plugin::Router::Resolver::VERSION = 0.01;
 
+=head1 NAME
+
+  Qpsmtpd::Plugin::Router::Resolver - DNS wrapper module.
+
+=head1 SYNOPSIS
+
+ use Qpsmtpd::Plugin::Router::Resolver;
+ my $dns = Qpsmtpd::Plugin::Router::Resolver->new();
+ my @ip = $dns->get_ip($hostname);
+ my @mx = $dns->get_mx($domain);
+
+=head1 DESCRIPTION
+
+Just a handy wrapper around Net::DNS with caching for faster response times.
+
+=head1 METHODS
+
+=cut
+
 use Net::DNS;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
+
+with 'Qpsmtp::Plugin::Router::Role';
+
+=head2 new()
+
+New caching resolver lib.
+
+=cut
 
 has res => (
             is      => 'ro',
@@ -52,12 +79,20 @@ has res => (
             }
            );
 
-has err => ( is => 'rw' );
+=head2 get_mx($domain)
+
+Resolve MX record(s) for a domain.
+
+Returns a list of ip addresses ordered by MX priority.
+
+Last entry of the list is the A record of the domain, if any.
+
+=cut
 
 sub get_mx {
   my ($self, $domain) = @_;
   my @ips;
-  $self->err('');
+  $self->rst;
 
   my @mx = mx($self->res, $domain);
 
@@ -69,17 +104,29 @@ sub get_mx {
       }
     }
   }
-  else {
+
+  my @a = $self->get_ip($domain);
+  if (@a) {
+    push @mx, @a;
+  }
+
+  if (! @mx) {
     $self->err("Can not find MX records for $domain: " . $self->res->{errorstring});
   }
 
   return @ips;
 }
 
+=head2 get_ip($host)
+
+Resolve $host. Returns a list of ip addresses.
+
+=cut
+
 sub get_ip {
   my ($self, $host) = @_;
   my @ips;
-  $self->err('');
+  $self->rst;
 
   my $reply = $self->res->search($host);
 
@@ -97,21 +144,4 @@ sub get_ip {
 }
 
 1;
-
-=head1 NAME
-
-  Qpsmtpd::Plugin::Router::Resolver - DNS wrapper module.
-
-=head1 SYNOPSIS
-
- use Qpsmtpd::Plugin::Router::Resolver;
- my $dns = Qpsmtpd::Plugin::Router::Resolver->new(..);
- my @ip = $dns->get_ip($hostname);
- my @mx = $dns->get_mx($domain);
-
-=head1 DESCRIPTION
-
-Just a handy wrapper around Net::DNS with caching for faster response times.
-
-=cut
 

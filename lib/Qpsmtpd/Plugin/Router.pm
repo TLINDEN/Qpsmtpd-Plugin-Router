@@ -40,14 +40,6 @@ package Qpsmtpd::Plugin::Router;
 
 $Qpsmtpd::Plugin::Router::VERSION = 0.01;
 
-use Moo;
-use strictures 2;
-use namespace::clean;
-
-
-
-1;
-
 =head1 NAME
 
 Qpsmtpd::Plugin::Router - queue/router base class
@@ -71,4 +63,12 @@ Primary interface for router. Does initialization, starts the spooling
 daemon, etc.
 
 =cut
+
+use Moo;
+use strictures 2;
+use namespace::clean;
+
+
+
+1;
 

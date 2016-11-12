@@ -73,6 +73,8 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
+with 'Qpsmtpd::Plugin::Router::Role';
+
 =head2 new(spooldir => $dir)
 
 Return new FS instance.
@@ -80,15 +82,6 @@ Return new FS instance.
 =cut
 
 has spooldir => ( is => 'rw' );
-has err      => ( is => 'rw' );
-
-=head2 rst()
-
-Reset err.
-
-=cut
-
-sub rst { $_[0]->err(''); }
 
 =head2 writable()
 
@@ -118,7 +111,9 @@ sub put {
 
   # 1st step, create temp file
   my $template = ".${file}.tmp.XXXX";
-  my $fh = File::Temp->new(TEMPLATE => $template, DIR => $self->spooldir, UNLINK => 0);
+  my $fh = File::Temp->new(TEMPLATE => $template,
+                           DIR      => $self->spooldir,
+                           UNLINK   => 0);
 
   if (! $fh) {
     $self->err("Could not create tmp file: $!");
