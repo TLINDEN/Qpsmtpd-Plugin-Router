@@ -35,28 +35,79 @@
 # Part of Qpsmtpd::Plugin::Router:
 # https://github.com/TLINDEN/Qpsmtpd-Plugin-Router
 
-package Qpsmtpd::Plugin::Router::Deliver::Resolver;
+package Qpsmtpd::Plugin::Router::Resolver;
 
-$Qpsmtpd::Plugin::Router::Deliver::Resolver::VERSION = 0.01;
+$Qpsmtpd::Plugin::Router::Resolver::VERSION = 0.01;
+
+use Net::DNS;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
 
+has res => (
+            is      => 'ro',
+            builder => sub {
+              return Net::DNS::Resolver->new;
+            }
+           );
 
+has err => ( is => 'rw' );
+
+sub get_mx {
+  my ($self, $domain) = @_;
+  my @ips;
+  $self->err('');
+
+  my @mx = mx($self->res, $domain);
+
+  if (@mx) {
+    foreach my $rr (sort {$a->preference <=> $b->preference} @mx) {
+      my @list = $self->get_ip($rr->exchange);
+      if (@list) {
+        push @ips, @list;
+      }
+    }
+  }
+  else {
+    $self->err("Can not find MX records for $domain: " . $self->res->{errorstring});
+  }
+
+  return @ips;
+}
+
+sub get_ip {
+  my ($self, $host) = @_;
+  my @ips;
+  $self->err('');
+
+  my $reply = $self->res->search($host);
+
+  if ($reply) {
+    foreach my $rr ($reply->answer) {
+      next unless ($rr->type eq "A" || $rr->type eq "AAAA");
+      push @ips, $rr->address;
+    }
+  }
+  else {
+    $self->err("query failed: ". $self->res->{errorstring});
+  }
+
+  return @ips;
+}
 
 1;
 
 =head1 NAME
 
-Qpsmtpd::Plugin::Router::Deliver::Resolver - DNS wrapper module.
+  Qpsmtpd::Plugin::Router::Resolver - DNS wrapper module.
 
 =head1 SYNOPSIS
 
- use Qpsmtpd::Plugin::Router::Deliver::Resolver;
- my $dns = Qpsmtpd::Plugin::Router::Deliver::Resolver->new(..);
- my $ip = $dns->ip($hostname);
- my $mx = $dns->mx($domain);
+ use Qpsmtpd::Plugin::Router::Resolver;
+ my $dns = Qpsmtpd::Plugin::Router::Resolver->new(..);
+ my @ip = $dns->get_ip($hostname);
+ my @mx = $dns->get_mx($domain);
 
 =head1 DESCRIPTION
 
