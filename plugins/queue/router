@@ -1,0 +1,197 @@
+#!perl -w
+
+=head1 NAME
+
+queue/router
+
+=head1 DESCRIPTION
+
+This plugin acts as a general  purpose smtp routing queue. It tries to
+deliver mails  queued into it  to an external  target, which can  be a
+mail  server, an  external delivery  agent, a  script or  even another
+queue plugin.  If this doesn't  work, it puts  the mail back  into the
+queue (on disk, that is) and tries again later.
+
+For this to work, a queueing daemon  will be forked on startup, but it
+can be  started independently as well.  This daemon will take  care of
+mails residing in the various sub queues (see below).
+
+In fact, the queue/router plugin call from qpsmtpd will just throw new
+mails into the incoming queue and  exit, the daemon will then process
+the new mail.
+
+Therefore  it  is  reallly  important, that  your  filter  and  plugin
+configuration is setup properly. Better make sure, that mails entering
+the queue are wanted. Any unwanted mails must be kept away from it.
+
+It supports the following delivery methods:
+
+=over
+
+=item static relay host
+
+Just send all mails to this smtp server.
+
+=item mx via smtp
+
+Do dns mx lookup and send mails to whoever it belongs to.
+
+Will  be used  if either  none  of B<transports>  or B<relayhosts>  is
+configured or if B<transports> is configured but no entry matches.
+
+=item mail delivery agent
+
+Send mail to a local delivery agent (MDA) like maildrop or procmail.
+
+=item pipe
+
+Pipe mail into stdin of an external program (useful to implement robots).
+
+=item rule-set based
+
+Different   delivery  methods   can  be   configured  in   a  rule-set
+(policy). Any  of the above  listed methods can be  used, configurable
+for domains, subdomains, regexes or email addresses.
+
+=back
+
+The plugin maintains a bunch of sub-queues which it creates on startup
+if they don't exist yet:
+
+ +------------+----------------------------------------------------+
+ | incoming   | new mails enter this queue first                   |
+ | active     | contains mails currently being delivered           |
+ | deferred   | temporary undeliverable mails                      |
+ | archive    | final undeliverable mails, if archiving is enabled |
+ +------------+----------------------------------------------------+
+
+Beside  delivering  mails,  the  plugin  can also  be  used  for  mail
+rewriting.  Sender  and/or recipient  domains can be  rewritten.  It's
+possible to rewrite the canonical addresses as well as the mail header
+addresses (From: and To: header fields) if you want.
+
+=head1 CONFIG
+
+The plugin accepts the following parameters:
+
+=over
+
+=item B<relayhost SERVER,[SERVER,...]>
+
+Always  use this  server  as relay.   Separate  multiple servers  with
+comma. Add  the port with  :port. When using ipv6  addresses, surround
+them with brackets (only required if a port has to be specified). When
+using  hostname,  use fqdn,  otherwise  the  plugin assumes  the  host
+resides under $me domain (that is, the domain after config/me).
+
+If multiple servers are configured, they will be used in a round robin
+fashion.
+
+Examples:
+
+ relayhost 172.10.1.1
+ relayhost 10.1.1.1:2525
+ relayhost [::1]:2425
+ relayhost mx.foo.bar,mx.backup.foo.bar
+
+The  B<relayhost>  variable has  precedence  over  the other  delivery
+methods   configured,  if   any.  So,   either  use   B<relayhost>  or
+B<transports>.
+
+=item B<transports FILE>
+
+Transport policy text  file containing rules how to  deliver mails per
+destination  pattern.   You  can  specify  domains,  email  addresses,
+wildcards or regexes.
+
+Target  can  be  one  or  more mail  server  (same  notation  as  with
+B<relayhost>), a pipe, an MDA or another qpsmtp queue plugin.
+
+More specific entries have precedence.
+
+Format:
+
+ destination    next-hop
+
+Destination examples:
+
+ foo.bar
+ *.foo
+ /blah/
+
+Next-hop examples:
+
+ 172.10.1.1
+ queue/maildir
+ |my-mail-robot.pl
+ /usr/bin/maildrop
+
+=item B<transport-defs FILE>
+
+To make  it easier to maintain  the transport policy, you  can specify
+variables, which can be used in the transport policy. The format is simple:
+
+ name value
+
+Variables can be used in the transports policy file, e.g.:
+
+ /.*spl-[0-9]{6}\.foo.bar/       $splunkmta
+
+=item B<max-age DAYS>
+
+How many  days a mail  is allowed to be  queued. After this  time, the
+mail will be discarded. If  B<send-ndr> is true, a non-delivery report
+will be  sent to the canonical  sender, otherwise drop the  message or
+put it into the archive queue, if B<archive-failed> is set to true.
+
+=item B<archive-failed BOOL>
+
+If set  to true, mails which  cannot be delivered will  not be dropped
+but archived to an archive queue.
+
+=item B<queue-dir DIR>
+
+If  you  want  to  use   another  spool  directory  as  qpsmtp  itself
+uses.  Directory  must exist  and  be  writable  to the  user  running
+qpsmtpd.
+
+=item B<rewriting FILE>
+
+Text file which contains rules how to rewrite mail sender or recipient
+addresses or both.
+
+Format:
+
+ direction   old-value    new-value
+
+Direction can be:
+
+ from
+ to
+ both
+
+Old-value can be:
+
+ domain     (eg: foo.bar)
+ wildcard   (eg: *.bar)
+ regex      (eg: /[0-9]*.foo.bar/)
+
+New-value must be a domain.
+
+=item B<rewrite-both BOOL>
+
+If set to  a true value both canonical and  mail header addresses will
+be rewritten. Example:
+
+ from    *.servers.company.foo      company.foo
+
+=item B<send-ndr BOOL>
+
+If set to true, a non-delivery  response will be sent to the canonical
+sender of  mails that cannot  be delivered after B<max-age>  days. The
+sender of these NDRs will be <> (none).
+
+=back
+
+=cut
+
