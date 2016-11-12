@@ -48,9 +48,14 @@ WriteMakefile(
               AUTHOR       => 'Thomas v.Dein <tlinden@cpan.org>',
               clean        => { FILES => '*~ */*~' },
               PREREQ_PM    => {
-                               'Crypt::Random'  => 0,
-                               'File::Temp'     => 0,
-                               'Moo'            => 0
+                               'Crypt::Random'         => 0,
+                               'File::Temp'            => 0,
+                               'Moo'                   => 0,
+                               'File::Copy::Recursive' => 0,
+                               'File::Temp'            => 0,
+                               'Fcntl'                 => 0,
+                               'File::Spec'            => 0,
+                               'strictures'            => 0
                               },
               dist         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
               test         => { TESTS => 't/*.t' },
