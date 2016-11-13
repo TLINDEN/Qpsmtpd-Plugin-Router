@@ -68,6 +68,7 @@ use File::Temp;
 use File::Spec::Functions qw(splitpath file_name_is_absolute catfile catpath);
 use Fcntl qw(:DEFAULT :flock LOCK_EX LOCK_NB);
 use File::Copy::Recursive qw(fcopy rcopy dircopy fmove rmove dirmove);
+use FileHandle;
 
 use Moo;
 use strictures 2;
@@ -132,6 +133,35 @@ sub put {
 
   # all looks good so far, move it
   return $self->mv($self->spooldir, $filename, $self->spooldir, $file);
+}
+
+
+=head2 get($file)
+
+Return $file content as string. $file must reside withing spooldir.
+
+=cut
+
+sub get {
+  my($self, $file) = @_;
+  $self->rst;
+  my $path = catfile($self->spooldir, $file);
+
+  if (! -r $path) {
+    $self->err("$path does not exist or is not readable");
+    return 0;
+  }
+
+  my $fh = FileHandle->new;
+
+  if ($fh->open("<$path")) {
+    my $content = join '', <$fh>;
+    return $content;
+  }
+  else {
+    $self->err("Could not open $path for reading: $!");
+    return 0;
+  }
 }
 
 =head2 mv($srcdir, $srcfile, $dstdir, $dstfile)
@@ -201,14 +231,14 @@ sub mv {
 
 Locks $path (does not need to exist).
 
-Returns lock handle.
+Returns lock object.
 
 =cut
 
 sub lock {
   my ( $self, $path ) = @_;
 
-  open(my $lock, '>', "$path.lock") or do {
+  open(my $lock, '>', "${path}.lock") or do {
     $self->err("opening lockfile failed: $!");
     return;
   };
@@ -219,7 +249,7 @@ sub lock {
     return;
   };
 
-  return $lock;
+  return { hdl => $lock, file => "${path}.lock" };
 }
 
 =head2 unlock($handle)
@@ -230,7 +260,8 @@ Unlock lock handle $handle.
 
 sub unlock {
   my ( $self, $lock ) = @_;
-  close $lock;
+  close $lock->{hdl};
+  unlink $lock->{file};
 }
 
 
