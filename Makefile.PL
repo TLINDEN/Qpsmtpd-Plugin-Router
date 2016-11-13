@@ -46,7 +46,7 @@ WriteMakefile(
               ABSTRACT     => 'qpsmtpd general purpose policy mail router / spooler',
               LICENSE      => 'perl',
               AUTHOR       => 'Thomas v.Dein <tlinden@cpan.org>',
-              clean        => { FILES => '*~ */*~' },
+              clean        => { FILES => '*~ */*~ t/test* t/.test*' },
               PREREQ_PM    => {
                                'Crypt::Random'         => 0,
                                'File::Temp'            => 0,
