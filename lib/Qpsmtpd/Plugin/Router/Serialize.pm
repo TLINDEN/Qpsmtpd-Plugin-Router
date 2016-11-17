@@ -42,7 +42,7 @@ $Qpsmtpd::Plugin::Router::Serialize::VERSION = 0.01;
 
 =head1 NAME
 
-Qpsmtpd::Plugin::Router::Serialize - serialize Qpsmtp::Transaction objects to disk.
+Qpsmtpd::Plugin::Router::Serialize - serialize Qpsmtpd::Transaction objects to disk.
 
 =head1 SYNOPSIS
 
@@ -55,7 +55,7 @@ Qpsmtpd::Plugin::Router::Serialize - serialize Qpsmtp::Transaction objects to di
 
 =head1 DESCRIPTION
 
-Write Qpsmtp::Transaction objects to disk,  support NFS locking, use a
+Write Qpsmtpd::Transaction objects to disk,  support NFS locking, use a
 temporary file in  the same directory and only move  to final filename
 when write ok. Do the reverse on thaw().
 

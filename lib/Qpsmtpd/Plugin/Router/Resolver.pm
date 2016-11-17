@@ -59,12 +59,13 @@ Just a handy wrapper around Net::DNS with caching for faster response times.
 =cut
 
 use Net::DNS;
+use Data::Validate::IP qw(is_ipv4 is_ipv6);
 
 use Moo;
 use strictures 2;
 use namespace::clean;
 
-with 'Qpsmtp::Plugin::Router::Role';
+with 'Qpsmtpd::Plugin::Router::Role';
 
 =head2 new()
 
@@ -141,6 +142,51 @@ sub get_ip {
   }
 
   return @ips;
+}
+
+=head2 parse("host:port,...")
+
+Parse a given  host argument (list). Checks if a  port has been given,
+checks if an ip address is valid and if a hostname is resolvable.
+
+Returns array-ref of {host => $host, port => $port}
+
+=cut
+
+sub parse {
+  my ($self, $list) = @_;
+  $self->rst;
+  my @servers;
+
+  foreach my $entry (split /\s*,\s*/, $list) {
+    my ($host, $port);
+    if ($entry =~ /\[([^\]]*)(.*)/ || $entry =~ /([^:]*)(.*)/) {
+      # v6
+      $host = $1;
+      $port = $2 || 25;
+      $port =~ s/://;
+
+      # host ok (v4, v6, name)?
+      if (! is_ipv6($host)) {
+        if (! is_ipv4($host)) {
+          if (! $self->get_ip($host)) {
+            return (); # err already set by get_ip()
+          }
+        }
+      }
+
+      # port ok?
+      if ($port < 1 || $port > 65535) {
+        $self->err("Invalid port ($host:$port)!");
+        return ();
+      }
+
+      # use
+      push @servers, {host => $host, port => $port};
+    }
+  }
+
+  return @servers;
 }
 
 1;

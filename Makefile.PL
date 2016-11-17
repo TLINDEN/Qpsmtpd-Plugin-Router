@@ -55,7 +55,8 @@ WriteMakefile(
                                'File::Temp'            => 0,
                                'Fcntl'                 => 0,
                                'File::Spec'            => 0,
-                               'strictures'            => 0
+                               'strictures'            => 0,
+                               'Data::Validate::IP'    => 0,
                               },
               dist         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
               test         => { TESTS => 't/*.t' },

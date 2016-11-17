@@ -109,7 +109,8 @@ wildcards or regexes.
 Target  can  be  one  or  more mail  server  (same  notation  as  with
 B<relayhost>), a pipe, an MDA or another qpsmtp queue plugin.
 
-More specific entries have precedence.
+Top entries have precedence, that is:  order in the file matters. If a
+rule matches, no further checks will be made.
 
 Format:
 

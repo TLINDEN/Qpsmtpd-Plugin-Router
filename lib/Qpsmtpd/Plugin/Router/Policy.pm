@@ -39,13 +39,9 @@ package Qpsmtpd::Plugin::Router::Policy;
 
 $Qpsmtpd::Plugin::Router::Policy::VERSION = 0.01;
 
-use Moo;
-use strictures 2;
-use namespace::clean;
 
 
 
-1;
 
 =head1 NAME
 
@@ -62,5 +58,190 @@ Qpsmtpd::Plugin::Router::Policy - parse policy and config.
 Parse transports policy and qpsmtpd plugin config and store everything
 in a policy object for easy access.
 
+=head1 METHODS
+
 =cut
 
+use Qpsmtpd::Plugin::Router::Deliver::SMTP;
+use Qpsmtpd::Plugin::Router::Deliver::MDA;
+use Qpsmtpd::Plugin::Router::Deliver::ToPlugin;
+use Qpsmtpd::Plugin::Router::Deliver::DNS;
+
+
+use Moo;
+use strictures 2;
+use namespace::clean;
+
+with 'Qpsmtpd::Plugin::Router::Role';
+
+=head2 new(policy => $file, [defs => $file])
+
+Return parsed policy as hash-ref. Policy parameter is mandatory.
+
+=cut
+
+has policyfile => (
+               is       => 'rw',
+               required => 1,
+               isa      => sub {
+                 if (defined $_[0]) {
+                   if (! -r $_[0]) {
+                     die "Policy file $_[0] does not exist or is not readable!";
+                   }
+                 }
+                 else {
+                   die "Please provide a policy file name!";
+                 }
+               },
+              );
+
+has defsfile => ( # optional
+             is  => 'rw',
+             isa => sub {
+               if (defined $_[0]) {
+                 if (! -r $_[0]) {
+                   die "Policy DEF file $_[0] does not exist or is not readable!";
+                 }
+               }
+               else {
+                 die "Please provide a policy DEF file name!";
+               }
+             },
+            );
+
+has vars => (  # hash ref containing vars
+             is     => 'rw',
+             traits => ['Hash']
+            );
+
+has policy => (  # array ref containing rules
+               is     => 'rw',
+               traits => ['Array']
+              );
+
+
+sub BUILD {
+  my ($self, $args) = @_;
+
+  if ($self->defsfile) {
+    $self->_parse_defs();
+  }
+
+  if ($self->policyfile) {
+    $self->_parse_policy();
+  }
+}
+
+
+
+
+#
+# internal: variable file parser, sets $self->vars hash ref
+sub _parse_defs {
+  my ($self) = @_;
+  my %vars;
+  if (open D, "<" . $self->defsfile) {
+    while (<D>) {
+      chomp;
+      next if(/^\s*$/ || /^\s*#/);
+      my ($var, $val) = split /\s\s*/, $_, 2;
+      $vars{$var} = $val;
+    }
+    close D;
+    $self->vars(\%vars);
+  }
+  else {
+    die "Could not read " . $self->defsfile . ": $!\n";
+  }
+}
+
+#
+# internal: policy file parser, sets $self->policy hash ref
+# which consists of: { regex => agent }, where agent is an
+# instance of ::Deliver::*.
+sub _parse_policy {
+  my ($self) = @_;
+  my @policy;
+
+  if (open D, "<" . $self->policyfile) {
+    while (<D>) {
+      chomp;
+      next if(/^\s*$/ || /^\s*#/);
+      my($if, $then) =  split /\s\s*/, $_, 2;
+      push @policy, {$self->_rule_p($if), $self->_deliver_p($then)};
+    }
+    close D;
+    push @policy, $self->_rule_default();
+    $self->policy(\@policy);
+  }
+  else {
+    die "Could not read " . $self->policyfile . ": $!\n";
+  }
+}
+
+#
+# internal: parse rule entry and convert to compiled regex
+sub _rule_p {
+  my ($self, $if) = @_;
+
+  if ($if =~ /^\/(.*)\//) {
+    # regular regex, keep as is
+    return qr/$1/io;
+  }
+  elsif ($if =~ /\*/) {
+    # glob, always matches the whole thing
+    $if =~ s/\*/\.\*/g;
+    return qr/^${if}$/io;
+  }
+  else {
+    # domain, only matches against the end-of-string
+    return qr/$if$/io;
+  }
+}
+
+#
+# internal: action (then) parser, instantiates an apropriate Deliver
+# instance, if one matches, croaks otherwise
+sub _deliver_p {
+  my ($self, $then) = @_;
+
+  # try to interpolate
+  if ($self->vars) {
+    $then =~ s/\$([a-zA-Z0-9\-_]+)/
+      my $n = $1;
+      if (exists $self->vars->{$n}) {
+        $self->vars->{$n};
+      }
+      else {
+        "";
+      }
+    /gex;
+  }
+
+  # check action type
+  if ($then =~ /^\|(.*)/ || $then =~ /^(\\.*)/) {
+    my $exec = $1;
+    if (-e $exec) {
+      return Qpsmtpd::Plugin::Router::Deliver::MDA->new(exec => $exec);
+    }
+    else {
+      die "Failed to locate executable $exec: not executable, readable or non-existent";
+    }
+  }
+  elsif ($then =~ /^queue\/.*/) {
+    return Qpsmtpd::Plugin::Router::Deliver::ToPlugin->new(plugin => $then);
+  }
+  else {
+    # threat everything else as mailserver
+    return Qpsmtpd::Plugin::Router::Deliver::SMTP->new(server => $then);
+  }
+}
+
+#
+# will be added as last entry to policy (if there's one)
+sub _rule_default {
+  my ($self) = @_;
+  return { qr/.*/ => Qpsmtpd::Plugin::Router::Deliver::DNS->new() };
+}
+
+1;

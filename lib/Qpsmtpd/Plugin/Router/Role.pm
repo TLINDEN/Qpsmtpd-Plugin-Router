@@ -58,6 +58,7 @@ use Moo::Role;
 use strictures 2;
 use namespace::clean;
 
+#has log => ( is => 'rw' ); # FIXME: check how to use Qpsmtps log sub.
 
 has err => ( is => 'rw' );
 
