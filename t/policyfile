@@ -1,0 +1,2 @@
+# test transports policy
+foo.bar           $myrelay

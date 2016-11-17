@@ -5,6 +5,7 @@ use Test::More qw(no_plan);
 
 require_ok ('Qpsmtpd::Plugin::Router');
 require_ok ('Qpsmtpd::Plugin::Router::FS');
+require_ok ('Qpsmtpd::Plugin::Router::Policy');
 
 # FS tests
 {
@@ -25,5 +26,15 @@ require_ok ('Qpsmtpd::Plugin::Router::FS');
   ok($fs->get("testfile") eq "helloworld", "::FS->get() shall return file content");
   diag($fs->err);
 }
+
+
+
+# Policy tests
+{
+  my $p = Qpsmtpd::Plugin::Router::Policy->new(defsfile => "t/defsfile", policyfile => "t/policyfile");
+  ok($p, "::Policy obj");
+}
+
+
 
 done_testing();
