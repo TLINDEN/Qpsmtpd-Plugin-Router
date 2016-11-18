@@ -54,21 +54,14 @@ Router roles.
 
 =cut
 
+use Try::Tiny;
+
 use Moo::Role;
 use strictures 2;
 use namespace::clean;
 
 #has log => ( is => 'rw' ); # FIXME: check how to use Qpsmtps log sub.
 
-has err => ( is => 'rw' );
-
-=head2 rst()
-
-Reset err.
-
-=cut
-
-sub rst { $_[0]->err(''); }
 
 
 1;

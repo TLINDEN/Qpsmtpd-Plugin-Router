@@ -61,53 +61,41 @@ dns lookups, this has to be done by the spooler (Qpsmtpd::Plugin::Router::Queue)
 
 use Qpsmtpd::Plugin::Router::Resolver;
 use Net::SMTP;
-#use Qpsmtpd::Transaction;
+use Qpsmtpd::Transaction;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
 
 with 'Qpsmtpd::Plugin::Router::Role';
+with 'Qpsmtpd::Plugin::Router::Deliver';
 
 
-=head2 new(server => "host[:port][,...]")
+=head2 new(server => "host[:port][,...]", Timeout => 10, Hello => 'mailgwfoo.bar', LocalAddr => undef)
 
 Return new ::SMTP delivery agent object,  which can be used to deliver
-mails using SMTP to the specified servers.
+mails using SMTP to the specified server[s].
+
+All  L<Net::SMTP> parameters  can be  supplied which  will be  used as
+defaults for all mailservers.
 
 =cut
+
+has servers => (
+                is     => 'rw',
+                traits => ['Array']
+               );
 
 has server => (
                is => 'rw',
                );
 
-has servers => (
-                is     => 'rw',
-                traits => ['Array']
-                );
-
-
 sub BUILD {
   my($self, $args) = @_;
 
-  my $res = Qpsmtpd::Plugin::Router::Resolver->new();
+  my @servers = $self->res->parse($self->server, $self->defaults); # defaults from base class
 
-  my @servers = $res->parse($self->server);
-  if (!@servers) {
-    die $res->err;
-  }
-  else {
-    my @smtp;
-    foreach my $S (@servers) {
-      push @smtp, Net::SMTP->new(Host    => $S->host,
-                                 Port    => $S->Port,
-                                 Timeout => 10,       # FIXME: make configurable
-                                 Hello   => 'FIXME'   # dito.
-                                 #LocalAddr => ? # check if we have to use a bind ip
-                                ) or die $!;
-    }
-    $self->servers(\@smtp);
-  }
+  $self->servers(\@servers);
 }
 
 
@@ -115,7 +103,7 @@ sub BUILD {
 
 Try  to  deliver $transaction  to  one  of $self->servers.   Tries  to
 deliver for each recipient separately  and if successfull, remove rcpt
-from $transaction;
+from $transaction.
 
 Returns arrayref containing all log messages and the possibly modified
 $transaction  object or  0  if  no more  recipients  are  left in  the
@@ -127,36 +115,28 @@ sub deliver {
   my($self, $transaction) = @_;
   my @log;
 
-  foreach my $rcpt ($transaction->recipients) {
-    foreach my $smtp (@{$self->servers}) { # FIXME: add some kind of loadbalancing function to select server
-      eval {
-        $smtp->mail($transaction->sender->address || "") or die $!;
-        $smtp->to($rcpt->address) or die $!;
-        $smtp->data() or die $!;
-        $smtp->datasend($transaction->header->as_string) or die $!;
-        $transaction->body_resetpos;
-        while (my $line = $transaction->body_getline) {
-          $smtp->datasend($line) or die $!;
-        }
-        $smtp->dataend() or die $!;
+  my %list = $self->transaction2list($transaction);
+
+  foreach my $domain (keys %list) {
+    foreach my $server (@{$self->servers}) {
+      my $qid;
+      try {
+        $qid = $self->deliver_msg($server, $transaction, $list{$domain});
+      }
+      catch {
+        push @log, sprintf "failed to deliver for %s via transport %s:%d: $@",
+          join(',', @{$list{$domain}}), $server->Host, $server->Port;
+        # try next mail server, don't die here!
       };
 
-      if ($@) {
-        push @log, sprintf "failed to deliver for %s via %s:%d: $@",
-          $rcpt->address, $smtp->host, $smtp->port;
-        # next mail server
-      }
-      else {
-        my $qid = $smtp->message();
-        my @list = split(' ', $qid);
-        $qid = pop(@list);
+      # success
+      push @log, sprintf "delivered successfully for %s via %s:%d (queued as %s)",
+        join(',', @{$list{$domain}}), $server->Host, $server->Port, $qid;
 
-        push @log, sprintf "delivered successfully for %s via %s:%d (queued as %s)",
-          $rcpt->address, $smtp->host, $smtp->port, $qid;
-
+      foreach my $rcpt (@{$list{$domain}}) {
         $transaction->remove_recipient($rcpt);
-        last; # next rcpt
       }
+      last; # next rcpt
     }
   }
 
@@ -168,6 +148,72 @@ sub deliver {
   }
 }
 
+
+=head2 deliver_msg($serverobj, $transaction, $recipients)
+
+Try to deliver $transaction for  @$recipients to $serverobj (a Net::SMTP
+object). Returns the queueid of remote.
+
+=cut
+
+sub deliver_msg {
+  my($self, $server, $transaction, $recipients) = @_;
+
+  my $smtp = Net::SMTP->new(%{$server}) or die "Could not connect to $server->{Host}: $!";
+
+  if ($smtp->message =~ /starttls/i) {
+    $smtp->starttls() or die "Could not establish TLS session to $server->{Host}: $!";
+  }
+
+  $smtp->mail($transaction->sender->address || "")
+    or die "Could not set sender to " . $transaction->sender->address . "on $server->{Host}: $!";
+
+  foreach my $rcpt (@{$recipients}) {
+    $smtp->to($rcpt->address)
+      or die "Could not set recipient to " . $rcpt->address . "on $server->{Host}: $!";
+  }
+
+  $smtp->data()
+    or die "Could not start DATA on $server->{Host}: $!";
+
+  $smtp->datasend($transaction->header->as_string)
+    or die "Could not send DATA on $server->{Host}: $!";
+
+  $transaction->body_resetpos;
+  while (my $line = $transaction->body_getline) {
+    $smtp->datasend($line)
+      or die "Could not send body LINE on $server->{Host}: $!";
+  }
+
+  $smtp->dataend()
+    or die "Could not finish DATA on $server->{Host}: $!";
+
+  my $qid = $smtp->message();
+  $smtp->quit();
+  my @list = split(' ', $qid);
+  $qid = pop(@list);
+
+  return $qid;
+}
+
+
+
+=head2 _select_server()
+
+FIXME:
+
+Return next server based on some algorithm, if any.
+
+Work as a sort() routine, possible sort methods:
+
+- by appearance
+- by response time
+- by load
+- random
+- somehow user specified
+
+
+=cut
 
 
 

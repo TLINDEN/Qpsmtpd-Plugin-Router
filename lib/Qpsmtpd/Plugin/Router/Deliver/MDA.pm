@@ -39,14 +39,6 @@ package Qpsmtpd::Plugin::Router::Deliver::MDA;
 
 $Qpsmtpd::Plugin::Router::Deliver::MDA::VERSION = 0.01;
 
-use Moo;
-use strictures 2;
-use namespace::clean;
-
-
-
-1;
-
 =head1 NAME
 
 Qpsmtpd::Plugin::Router::Deliver::MDA - try to deliver a mail to an MDA.
@@ -65,5 +57,68 @@ spooler (Qpsmtpd::Plugin::Router::Queue).
 
 Must be used for all pipe related delivery methods (MDA, Mailrobot etc).
 
+=head2 METHODS
+
 =cut
+
+use Qpsmtpd::Transaction;
+use Try::Tiny;
+use FileHandle;
+
+use Moo;
+use strictures 2;
+use namespace::clean;
+
+with 'Qpsmtpd::Plugin::Router::Deliver';
+
+=head2 new(program => $program)
+
+Return new delivery agent object for local delivery to $program.
+
+=cut
+
+has program => (
+                is => 'rw',
+                builder => sub {
+                  if (! -x $_[0]) {
+                    die "$_[0] is not executable or does not exist";
+                  }
+                }
+               );
+
+
+=head2 deliver($transaction)
+
+Try to deliver $transaction to $self->program via STDIN.
+
+=cut
+
+sub deliver {
+  my($self, $transaction) = @_;
+  my @log;
+
+  foreach my $rcpt ($transaction->recipients) {
+    my $pipe = FileHandle->new;
+    if (open $pipe, "|" . $self->program) {
+      print $pipe $transaction->header->as_string;
+      print $pipe "\n";
+
+      $transaction->body_resetpos;
+      while (my $line = $transaction->body_getline) {
+        print $pipe $line;
+      }
+
+      $pipe->close;
+
+      # success
+      push @log, sprintf "delivered successfully for %s via %s (which said: %s)",
+        $rcpt->address, $self->program, 'FIXME: use IPC::open3 and catch output';
+    }
+    else {
+      die "Could not pipe message to " . $self->program . ": $!";
+    }
+  }
+}
+
+1;
 

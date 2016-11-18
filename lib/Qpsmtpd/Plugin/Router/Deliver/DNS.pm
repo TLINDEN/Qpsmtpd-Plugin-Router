@@ -39,14 +39,6 @@ package Qpsmtpd::Plugin::Router::Deliver::DNS;
 
 $Qpsmtpd::Plugin::Router::Deliver::DNS::VERSION = 0.01;
 
-use Moo;
-use strictures 2;
-use namespace::clean;
-
-
-
-1;
-
 =head1 NAME
 
 Qpsmtpd::Plugin::Router::Deliver::DNS - try to deliver a mail using smtp via DNS.
@@ -70,5 +62,79 @@ the spooler (Qpsmtpd::Plugin::Router::Queue).
 This  is  the  default  delivery  agent,  if  nothing  else  has  been
 configured or matches.
 
+=head1 METHODS
+
 =cut
+
+use Qpsmtpd::Plugin::Router::Resolver;
+use Qpsmtpd::Plugin::Router::Deliver::SMTP;
+use Net::SMTP;
+use Qpsmtpd::Transaction;
+use Try::Tiny;
+
+use Moo;
+use strictures 2;
+use namespace::clean;
+
+with 'Qpsmtpd::Plugin::Router::Deliver';
+
+=head2 new()
+
+Returns a standard DNS/MX delivery agent object.
+
+=cut
+
+
+=head2 deliver($transaction)
+
+Try to deliver $transaction to one  of the responsible mail servers as
+listed by MX.   Tries to deliver for each recipient  separately and if
+successfull, remove rcpt from $transaction.
+
+Returns arrayref containing all log messages and the possibly modified
+$transaction  object or  0  if  no more  recipients  are  left in  the
+transaction.
+
+=cut
+
+sub deliver {
+  my($self, $transaction) = @_;
+  my @log;
+
+  my %list = $self->transaction2list($transaction);
+
+  foreach my $domain (keys %list) {
+    foreach my $server ($self->res->get_mx($domain)) {
+      my %mx = (Host => $server, Port => 25, %{$self->defaults});
+      my $qid;
+      try {
+        $qid = $self->deliver_msg(\%mx, $transaction, $list{$domain});
+      }
+      catch {
+        push @log, sprintf "failed to deliver for %s via mx %s:%d: $@",
+          join(',', @{$list{$domain}}), $server, 25;
+        # try next mail server, don't die here!
+      };
+
+      # success
+      push @log, sprintf "delivered successfully for %s via %s:%d (queued as %s)",
+        join(',', @{$list{$domain}}), $server, 25, $qid;
+
+      foreach my $rcpt (@{$list{$domain}}) {
+        $transaction->remove_recipient($rcpt);
+      }
+      last; # next rcpt
+    }
+  }
+
+  if ($transaction->recipients) {
+    return (\@log, $transaction);
+  }
+  else {
+    return (\@log, 0);
+  }
+}
+
+
+1;
 

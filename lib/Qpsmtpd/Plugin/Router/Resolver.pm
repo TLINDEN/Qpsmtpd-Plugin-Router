@@ -60,6 +60,9 @@ Just a handy wrapper around Net::DNS with caching for faster response times.
 
 use Net::DNS;
 use Data::Validate::IP qw(is_ipv4 is_ipv6);
+use Carp::Heavy;
+use Carp;
+use Try::Tiny;
 
 use Moo;
 use strictures 2;
@@ -93,7 +96,6 @@ Last entry of the list is the A record of the domain, if any.
 sub get_mx {
   my ($self, $domain) = @_;
   my @ips;
-  $self->rst;
 
   my @mx = mx($self->res, $domain);
 
@@ -112,7 +114,7 @@ sub get_mx {
   }
 
   if (! @mx) {
-    $self->err("Can not find MX records for $domain: " . $self->res->{errorstring});
+    croak("Can not find MX records for $domain: " . $self->res->{errorstring});
   }
 
   return @ips;
@@ -127,7 +129,6 @@ Resolve $host. Returns a list of ip addresses.
 sub get_ip {
   my ($self, $host) = @_;
   my @ips;
-  $self->rst;
 
   my $reply = $self->res->search($host);
 
@@ -138,24 +139,42 @@ sub get_ip {
     }
   }
   else {
-    $self->err("query failed: ". $self->res->{errorstring});
+    croak("query failed: ". $self->res->{errorstring});
   }
 
   return @ips;
 }
+
+=head2 resolvable($host)
+
+Calls get_ip($host) but ignores exceptions, just returns TRUE if $host
+is resolvable or FALSE otherwise.
+
+=cut
+
+sub resolvable {
+  my ($self, $host) = @_;
+  try {
+    $self->get_ip($host);
+    return 1;
+  }
+  catch {
+    return 0;
+  };
+}
+
 
 =head2 parse("host:port,...")
 
 Parse a given  host argument (list). Checks if a  port has been given,
 checks if an ip address is valid and if a hostname is resolvable.
 
-Returns array-ref of {host => $host, port => $port}
+Returns array-ref of {host => $host, port => $port} or dies on errors.
 
 =cut
 
 sub parse {
-  my ($self, $list) = @_;
-  $self->rst;
+  my ($self, $list, $defaults) = @_;
   my @servers;
 
   foreach my $entry (split /\s*,\s*/, $list) {
@@ -169,20 +188,17 @@ sub parse {
       # host ok (v4, v6, name)?
       if (! is_ipv6($host)) {
         if (! is_ipv4($host)) {
-          if (! $self->get_ip($host)) {
-            return (); # err already set by get_ip()
-          }
+          $self->get_ip($host); # or use resolvable()?
         }
       }
 
       # port ok?
       if ($port < 1 || $port > 65535) {
-        $self->err("Invalid port ($host:$port)!");
-        return ();
+        croak("Invalid port ($host:$port)!");
       }
 
       # use
-      push @servers, {host => $host, port => $port};
+      push @servers, {Host => $host, Port => $port, %{$defaults}};
     }
   }
 

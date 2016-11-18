@@ -49,10 +49,8 @@ Qpsmtpd::Plugin::Router::FS - filesystem operations.
  use Qpsmtpd::Plugin::Router::FS;
  my $fs = Qpsmtpd::Plugin::Router::FS->new(spooldir => $dir);
  my $ok = $fs->put($file, $data);
- print $fs->err if(! $ok);
 
  my $data = $fs->get($file);
- print $fs->err if(! $data);
 
 =head1 DESCRIPTION
 
@@ -69,6 +67,9 @@ use File::Spec::Functions qw(splitpath file_name_is_absolute catfile catpath);
 use Fcntl qw(:DEFAULT :flock LOCK_EX LOCK_NB);
 use File::Copy::Recursive qw(fcopy rcopy dircopy fmove rmove dirmove);
 use FileHandle;
+
+use Carp::Heavy;
+use Carp;
 
 use Moo;
 use strictures 2;
@@ -97,7 +98,7 @@ sub writable {
 
 =head2 put($file, $data)
 
-Write $data to $file within spooldir.
+Write $data to $file within spooldir (if ! absolute).
 
 Actually writes  to a tmp file,  locks the destination file,  tries to
 move the tmp file to it and removes the lock if all went well.
@@ -108,17 +109,22 @@ sub put {
   my($self, $file, $data) = @_;
 
   return 0 unless $self->writable;
-  $self->rst;
 
   # 1st step, create temp file
-  my $template = ".${file}.tmp.XXXX";
-  my $fh = File::Temp->new(TEMPLATE => $template,
-                           DIR      => $self->spooldir,
-                           UNLINK   => 0);
+  my $fh;
+  if (file_name_is_absolute($file)) {
+    # do not use spooldir
+    $fh = File::Temp->new(TEMPLATE => "${file}.tmp.XXXX",
+                          UNLINK   => 1);
+  }
+  else {
+    $fh = File::Temp->new(TEMPLATE => ".${file}.tmp.XXXX",
+                          DIR      => $self->spooldir,
+                          UNLINK   => 1);
+  }
 
   if (! $fh) {
-    $self->err("Could not create tmp file: $!");
-    return 0;
+    croak "Could not create tmp file: $!";
   }
 
   # ok, write data to tmp file
@@ -127,8 +133,7 @@ sub put {
   $fh->close();
 
   if ((stat($filename))[7] != length($data)) {
-    $self->err("Something went horribly wrong while writing to $filename (file too small!)");
-    return 0;
+    croak "Something went horribly wrong while writing to $filename (file too small!)";
   }
 
   # all looks good so far, move it
@@ -144,12 +149,11 @@ Return $file content as string. $file must reside withing spooldir.
 
 sub get {
   my($self, $file) = @_;
-  $self->rst;
+
   my $path = catfile($self->spooldir, $file);
 
   if (! -r $path) {
-    $self->err("$path does not exist or is not readable");
-    return 0;
+    croak "$path does not exist or is not readable";
   }
 
   my $fh = FileHandle->new;
@@ -159,8 +163,7 @@ sub get {
     return $content;
   }
   else {
-    $self->err("Could not open $path for reading: $!");
-    return 0;
+    croak "Could not open $path for reading: $!";
   }
 }
 
@@ -173,7 +176,6 @@ file.
 
 sub mv {
   my($self, $srcdir, $srcfile, $dstdir, $dstfile) = @_;
-  $self->rst;
   my($src, $dst);
 
   if (file_name_is_absolute($srcfile)) {
@@ -191,28 +193,23 @@ sub mv {
   }
 
   if (!-d $dstdir) {
-    $self->err("$dstdir does not exist or is not a directory");
-    return 0;
+    croak("$dstdir does not exist or is not a directory");
   }
 
   if (!-w $dstdir) {
-    $self->err("$dstdir is not writable");
-    return 0;
+    croak("$dstdir is not writable");
   }
 
   if (!-r $src) {
-    $self->err("$src does not exist or is not readable");
-    return 0;
+    croak("$src does not exist or is not readable");
   }
 
   if (!-f $src) {
-    $self->err("$src is not a file");
-    return 0;
+    croak("$src is not a file");
   }
 
   if (-r $dst) {
-    $self->err("$dst already exists");
-    return 0;
+    croak("$dst already exists");
   }
 
   my $lock = $self->lock($dst);
@@ -220,7 +217,7 @@ sub mv {
 
   my $ok = fmove($src, $dst);
   if (! $ok) {
-    $self->err("Could not move file: $!");
+    croak("Could not move file: $!");
   }
 
   $self->unlock($lock);
@@ -239,14 +236,12 @@ sub lock {
   my ( $self, $path ) = @_;
 
   open(my $lock, '>', "${path}.lock") or do {
-    $self->err("opening lockfile failed: $!");
-    return;
+    croak("opening lockfile failed: $!");
   };
 
   flock($lock, LOCK_EX) or do {
-    $self->err("flock of lockfile failed: $!");
     close $lock;
-    return;
+    croak("flock of lockfile failed: $!");
   };
 
   return { hdl => $lock, file => "${path}.lock" };
