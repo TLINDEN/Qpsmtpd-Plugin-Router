@@ -64,6 +64,7 @@ Must be used for all pipe related delivery methods (MDA, Mailrobot etc).
 use Qpsmtpd::Transaction;
 use Try::Tiny;
 use FileHandle;
+use IPC::Run3;
 
 use Moo;
 use strictures 2;
@@ -98,27 +99,35 @@ sub deliver {
   my @log;
 
   foreach my $rcpt ($transaction->recipients) {
-    my $pipe = FileHandle->new;
-    if (open $pipe, "|" . $self->program) {
-      print $pipe $transaction->header->as_string;
-      print $pipe "\n";
-
-      $transaction->body_resetpos;
-      while (my $line = $transaction->body_getline) {
-        print $pipe $line;
-      }
-
-      $pipe->close;
-
-      # success
-      push @log, sprintf "delivered successfully for %s via %s (which said: %s)",
-        $rcpt->address, $self->program, 'FIXME: use IPC::open3 and catch output';
+    my $mail = $transaction->header->as_string . "\n";
+    $transaction->body_resetpos;
+    while (my $line = $transaction->body_getline) {
+      print $pipe $line;
     }
-    else {
-      die "Could not pipe message to " . $self->program . ": $!";
+
+    my($output);
+
+    eval {
+      local $SIG{ALRM} = sub { die "alarm\n" };
+      alarm 10;
+      run3($self->program, $mail, \$output, \$output);
+      alarm 0;
+    };
+
+    if ($@) {
+      die $self->program . " timed out";
     }
+
+    if ($? != 0) {
+      die $self->program . " failed with $?: $output";
+    }
+
+    # success
+    push @log, sprintf "delivered successfully for %s via %s (which said: %s)",
+      $rcpt->address, $self->program, $output;
   }
 }
+
 
 1;
 
