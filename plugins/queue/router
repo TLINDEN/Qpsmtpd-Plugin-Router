@@ -195,3 +195,27 @@ sender of these NDRs will be <> (none).
 
 =cut
 
+
+
+######################
+# draft
+
+=head1
+
+use router stuff
+
+sub init {
+
+load/parse config
+
+if not forked => fork (call ROuter::spooler() => else nix
+
+}
+
+sub hook_queue {
+put mail into incoming, done
+  call Router::incoming()
+}
+
+=cut
+
