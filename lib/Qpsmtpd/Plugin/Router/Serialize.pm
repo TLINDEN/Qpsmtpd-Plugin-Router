@@ -84,10 +84,8 @@ New serializer.
 
 
 has fs => (
-           is      => 'ro',
-           builder => sub {
-             return Qpsmtpd::Plugin::Router::FS->new();
-           }
+           is      => 'rw',
+           default => Qpsmtpd::Plugin::Router::FS->new()
           );
 
 
@@ -99,7 +97,7 @@ sub BUILD {
   local $Storable::Eval = sub { $safe->reval($_[0]) };
 }
 
-=head2 conserver($transaction, $file)
+=head2 conserve($transaction, $file)
 
 Serialize   $transaction  (assumed   to  be   an  Qpsmtpd::Transaction
 instance) to $file, which must be absolute.
@@ -108,7 +106,6 @@ instance) to $file, which must be absolute.
 
 sub conserve {
   my($self, $transaction, $file) = @_;
-  $self->set_spool($file);
 
   my $dump = freeze($transaction);
 
@@ -123,7 +120,6 @@ Deserialize from $file, return transaction object.
 
 sub restore {
   my($self, $file) = @_;
-  $self->set_spool($file);
 
   my $code = $self->fs->get($file);
   my $transaction = thaw($code);
@@ -137,7 +133,8 @@ sub restore {
 
 =head2 set_spool($file)
 
-Set FS spooldir from directory of $file path.
+Set FS  spooldir from directory  of $file  path.  Must be  called with
+$file before conserve() or restore() if $self has an empty FS object.
 
 =cut
 
