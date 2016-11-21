@@ -60,8 +60,93 @@ use Moo::Role;
 use strictures 2;
 use namespace::clean;
 
-#has log => ( is => 'rw' ); # FIXME: check how to use Qpsmtps log sub.
+has log => ( is => 'rw' ); # supply with new() like new(log => sub { return $qp->log(@_); }
 
+has config => (is => 'rw'); # shall contain the plugin config has hash ref
+
+has qp => (is => 'rw'); # shall contain the qp object ref
+
+=head2 clone-transaction($transaction)
+
+Return a cloned copy of $transaction object.
+
+=cut
+
+sub clone-transaction {
+  my ($self, $transaction) = @_;
+
+  my $hash;
+
+  foreach my $attr (keys %{$transaction}) {
+    $hash->{$attr} = $transaction->{$attr};
+  }
+
+  my $copy = bless $hash, ref $transaction;
+
+  return $copy;
+}
+
+
+=head2 transaction2list($transaction)
+
+Returns a hash of { $domain => [$rcpt,...] }.
+
+=cut
+
+sub transaction2list {
+  my($self, $transaction) = @_;
+
+  my %list;
+  foreach my $rcpt ($transaction->recipients) {
+    push @{$list{$rcpt->host}}, $rcpt;
+  }
+
+  return %list;
+}
+
+
+=head2 transaction2addrlist($transaction)
+
+Return array of recipient adresses.
+
+=cut
+
+sub transaction2addrlist {
+  my($self, $transaction) = @_;
+  my @list = map { $_->address } $transaction->recipients;
+  return @list;
+}
+
+
+=head2 rcpt2user($rcpt)
+
+Returns user part of email address (the stuff before @).
+
+=cut
+
+sub rcpt2user {
+  my($self, $rcpt) = @_;
+  my($user, $domain) = $rcpt->canonify($rcpt->address);
+  return $user;
+}
+
+=head2 transaction2message($transaction)
+
+Returns ASCII representation of $transaction.
+
+=cut
+
+sub transaction2message {
+  my($self, $transaction) = @_;
+
+  my $mail = $transaction->header->as_string . "\n";
+  $transaction->body_resetpos;
+  while (my $line = $transaction->body_getline) {
+    $mail .= $line;
+  }
+
+  return $mail;
+}
 
 
 1;
