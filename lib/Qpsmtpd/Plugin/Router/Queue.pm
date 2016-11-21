@@ -43,13 +43,12 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
+with 'Qpsmtpd::Plugin::Router::Role';
 
-
-1;
 
 =head1 NAME
 
-Qpsmtpd::Plugin::Router::Queue - monitor a queue.
+  Qpsmtpd::Plugin::Router::Queue - monitor a queue.
 
 =head1 SYNOPSIS
 
@@ -62,5 +61,16 @@ Qpsmtpd::Plugin::Router::Queue - monitor a queue.
 Monitor  a   sub  queue  spool   directory  for  new   mails  arriving
 there. Apply specified rules like refresh time, etc.
 
+=head1 METHODS
+
+=head2 new(queue => $queuedir)
+
+Return new queue manager object.
+
 =cut
 
+has queue => ( is => 'rw' );
+
+
+
+1;
