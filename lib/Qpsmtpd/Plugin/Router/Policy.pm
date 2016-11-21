@@ -130,6 +130,31 @@ sub BUILD {
   if ($self->policyfile) {
     $self->_parse_policy();
   }
+  else {
+    $self->policy([ $self->rule_default ]);
+  }
+}
+
+=head2 route($transport)
+
+Try to route $transport according to $self->policy.
+
+Returns (modified) $transaction or 0 if no rule has matched.
+
+Called from daemonized Router per queue.
+
+=cut
+
+sub route {
+  my ($self, $transport) = @_;
+
+  foreach my $rule (@{$self->policy}) {
+    if ($transaction->{m_domain} =~ /$rule->{regex}/) {
+      return $rule->{agent}->deliver($transaction);
+    }
+  }
+
+  return 0; # no rule matched, reject message
 }
 
 
@@ -156,8 +181,8 @@ sub _parse_defs {
 }
 
 #
-# internal: policy file parser, sets $self->policy hash ref
-# which consists of: { regex => agent }, where agent is an
+# internal: policy file parser, sets $self->policy array ref
+# which consists of: { regex => $regex, agent => $deliverobj }, where agent is an
 # instance of ::Deliver::*.
 sub _parse_policy {
   my ($self) = @_;
@@ -168,7 +193,8 @@ sub _parse_policy {
       chomp;
       next if(/^\s*$/ || /^\s*#/);
       my($if, $then) =  split /\s\s*/, $_, 2;
-      push @policy, {$self->_rule_p($if), $self->_deliver_p($then)};
+      push @policy, {regex => $self->_rule_p($if),
+                     agent => $self->_deliver_p($then)};
     }
     close D;
     push @policy, $self->_rule_default();
@@ -241,7 +267,8 @@ sub _deliver_p {
 # will be added as last entry to policy (if there's one)
 sub _rule_default {
   my ($self) = @_;
-  return { qr/.*/ => Qpsmtpd::Plugin::Router::Deliver::DNS->new() };
+  return { regex => qr/.*/,
+           agent => Qpsmtpd::Plugin::Router::Deliver::DNS->new() };
 }
 
 1;
