@@ -63,7 +63,7 @@ ok.
 =cut
 
 use File::Temp;
-use File::Spec::Functions qw(splitpath file_name_is_absolute catfile catpath);
+use File::Spec::Functions qw(splitpath file_name_is_absolute catfile);
 use Fcntl qw(:DEFAULT :flock LOCK_EX LOCK_NB);
 use File::Copy::Recursive qw(fcopy rcopy dircopy fmove rmove dirmove);
 use FileHandle;
