@@ -105,22 +105,6 @@ sub BUILD {
   $self->defaults($defaults);
 }
 
-=head2 transaction2list($transaction)
-
-Returns a hash of { $domain => [$rcpt,...] }.
-
-=cut
-
-sub transaction2list {
-  my($self, $transaction) = @_;
-
-  my %list;
-  foreach my $rcpt ($transaction->recipients) {
-    push @{$list{$rcpt->host}}, $rcpt;
-  }
-
-  return %list;
-}
 
 
 1;
