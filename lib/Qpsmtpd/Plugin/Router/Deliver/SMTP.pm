@@ -113,43 +113,61 @@ transaction.
 
 sub deliver {
   my($self, $transaction) = @_;
-  my @log;
+  my (@log, $qid, $code, $ok);
 
-  my %list = $self->transaction2list($transaction);
+  foreach my $server (@{$self->servers}) {
+    try {
+      ($qid, $code, $ok) = $self->deliver_msg($server, $transaction);
+    }
+    catch {
+      push @log, sprintf "failed to deliver via transport %s:%d: $@",
+        $server->Host, $server->Port;
+      # try next mail server, don't die here!
+      next;
+    };
+    last; # done, maybe with failures
+  }
 
-  foreach my $domain (keys %list) {
-    foreach my $server (@{$self->servers}) {
-      my $qid;
-      try {
-        $qid = $self->deliver_msg($server, $transaction, $list{$domain});
+  if (! $code) {
+    # will be undef if all tries died
+    $transaction->{m_retry} = 1;
+  }
+  else {
+    # we have a code, so at least the communication went trough
+    if ($code >= 500) {
+      # a final error, won't retry
+      $transaction->{m_retry} = 0;
+    }
+    else {
+      if ($qid) {
+        # success
+        push @log, sprintf "delivered successfully via %s:%d (queued as %s)",
+          $server->Host, $server->Port, $qid;
+        $transaction->{m_retry} = 0;
       }
-      catch {
-        push @log, sprintf "failed to deliver for %s via transport %s:%d: $@",
-          join(',', @{$list{$domain}}), $server->Host, $server->Port;
-        # try next mail server, don't die here!
-      };
-
-      # success
-      push @log, sprintf "delivered successfully for %s via %s:%d (queued as %s)",
-        join(',', @{$list{$domain}}), $server->Host, $server->Port, $qid;
-
-      foreach my $rcpt (@{$list{$domain}}) {
-        $transaction->remove_recipient($rcpt);
+      else {
+        $transaction->{m_retry} = 1;
       }
-      last; # next rcpt
     }
   }
 
-  if ($transaction->recipients) {
-    return (\@log, $transaction);
+  # remove ok recipients
+  my @orig = $self->transaction2addrlist($transaction);
+  foreach my $rcpt (@{$transaction->recipient}) {
+    if (grep {$rcpt->address eq $_} @ok) {
+      # sent to this one
+      $transaction->remove_recipient($rcpt);
+    }
   }
-  else {
-    return (\@log, 0);
-  }
+
+  $transaction->{m_log} = \@log;
+
+
+  return $transaction;
 }
 
 
-=head2 deliver_msg($serverobj, $transaction, $recipients)
+=head2 deliver_msg($serverobj, $transaction)
 
 Try to deliver $transaction for  @$recipients to $serverobj (a Net::SMTP
 object). Returns the queueid of remote.
@@ -157,7 +175,7 @@ object). Returns the queueid of remote.
 =cut
 
 sub deliver_msg {
-  my($self, $server, $transaction, $recipients) = @_;
+  my($self, $server, $transaction) = @_;
 
   my $smtp = Net::SMTP->new(%{$server}) or die "Could not connect to $server->{Host}: $!";
 
@@ -168,10 +186,7 @@ sub deliver_msg {
   $smtp->mail($transaction->sender->address || "")
     or die "Could not set sender to " . $transaction->sender->address . "on $server->{Host}: $!";
 
-  foreach my $rcpt (@{$recipients}) {
-    $smtp->to($rcpt->address)
-      or die "Could not set recipient to " . $rcpt->address . "on $server->{Host}: $!";
-  }
+  my @ok = $smtp->to(@{$transaction->recipients}, { SkipBad => 1 });
 
   $smtp->data()
     or die "Could not start DATA on $server->{Host}: $!";
@@ -192,8 +207,9 @@ sub deliver_msg {
   $smtp->quit();
   my @list = split(' ', $qid);
   $qid = pop(@list);
+  my $code = $smtp->code;
 
-  return $qid;
+  return ($qid, $code, \@ok);
 }
 
 
