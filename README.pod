@@ -72,6 +72,44 @@ rewriting.  Sender  and/or recipient  domains can be  rewritten.  It's
 possible to rewrite the canonical addresses as well as the mail header
 addresses (From: and To: header fields) if you want.
 
+On startup  the plugin forks a  queueing daemon which will  run in the
+background maintaining mail queues and delivering mails. If a new mail
+arrives, the following things will happen:
+
+1) the queue/router plugin will be  called by qpsmtpd and get the mail
+as function argument.
+
+2) if rewriting is configured, the rules will be applied, e.g.
+".*.foo.bar" => "foo.bar".
+
+3) plugin will  then put  the  message into  the C<incoming>  queue,
+return the queue-id and exit.
+
+4) the queue manager  will pick up the queue file by  moving it to the
+C<active> queue.
+
+5) it  will then  hand it  to a delivery  agent (one  of SMTP,  MDA or
+Plugin) according to the transport policy.
+
+6) if delivery  was a success, remove the queue  file. If the delivery
+error was temporary move it to the C<deferred> queue, otherwise remove
+the  mail from  the  queue (or  move  it into  the  archive queue,  if
+enabled).
+
+7)  if delivery  failed, mark  the transaction  as failed,  append the
+error to a transaction specific log of the transaction object (we just
+occupy the  object and add an  array ref with log  entries), increment
+the retry count and put it into the C<deferred> queue.
+
+8)  step  5-8 will  repeat  for  every  mail  in the  C<incoming>  and
+C<deferred>  queues.  However,  if  a   mail  failed  to  deliver  for
+B<max_age> days, remove  the queue file, unless  archiving is enabled,
+in this case the queue file will be moved to the archive dir.
+
+
+
+
+
 =head1 CONFIG
 
 The plugin accepts the following parameters:
@@ -161,7 +199,9 @@ qpsmtpd.
 =item B<rewriting FILE>
 
 Text file which contains rules how to rewrite mail sender or recipient
-addresses or both.
+addresses or both.  Rewriting - if  enabled - will be the first action
+done,  that is,  it  happens  before any  delivery  attempt. Rules  in
+transport or aliases have to match on rewritten addresses.
 
 Format:
 
@@ -193,6 +233,27 @@ be rewritten. Example:
 If set to true, a non-delivery  response will be sent to the canonical
 sender of  mails that cannot  be delivered after B<max-age>  days. The
 sender of these NDRs will be <> (none).
+
+=item B<aliases FILE>
+
+Filename  containing  recipient user  to  unix  user mapping,  without
+domains. This  file is  B<required> if local  delivery (using  the MDA
+agent) is being used.
+
+Format:
+
+ virtual-user    unix-user
+
+There  B<must> be  an entry  for root,  since the  MDA agent  will NOT
+deliver mails to  the root user directly, e.g.:
+
+ root    max
+
+Also there must be an entry for EVERY valid recipient, however you can
+use regular expressions on the virtual side, e.g.:
+
+ .*master    admin
+ .*www.*     phpgroup
 
 =back
 
