@@ -66,13 +66,13 @@ has config => (is => 'rw'); # shall contain the plugin config has hash ref
 
 has qp => (is => 'rw'); # shall contain the qp object ref
 
-=head2 clone-transaction($transaction)
+=head2 clonetransaction($transaction)
 
 Return a cloned copy of $transaction object.
 
 =cut
 
-sub clone-transaction {
+sub clonetransaction {
   my ($self, $transaction) = @_;
 
   my $hash;

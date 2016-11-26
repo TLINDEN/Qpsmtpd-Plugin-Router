@@ -85,7 +85,7 @@ New serializer.
 
 has fs => (
            is      => 'rw',
-           default => Qpsmtpd::Plugin::Router::FS->new()
+           default => sub { return Qpsmtpd::Plugin::Router::FS->new(); }
           );
 
 
@@ -118,18 +118,18 @@ Deserialize from $file, return transaction object.
 
 =cut
 
-sub restore {
-  my($self, $file) = @_;
+    sub restore {
+      my($self, $file) = @_;
 
-  my $code = $self->fs->get($file);
-  my $transaction = thaw($code);
+      my $code = $self->fs->get($file);
+      my $transaction = thaw($code);
 
-  if (!$transaction) {
-    die("failed to thaw() from $file: $!");
-  }
+      if (!$transaction) {
+        die("failed to thaw() from $file: $!");
+      }
 
-  return $transaction;
-}
+      return $transaction;
+    }
 
 =head2 set_spool($file)
 
@@ -138,10 +138,10 @@ $file before conserve() or restore() if $self has an empty FS object.
 
 =cut
 
-sub set_spool {
-  my($self, $file) = @_;
-  my($vol, $dir, $queuefile) = splitpath($file);
-  $self->fs->spooldir(catpath($vol, $dir));
-}
+    sub set_spool {
+      my($self, $file) = @_;
+      my($vol, $dir, $queuefile) = splitpath($file);
+      $self->fs->spooldir(catpath($vol, $dir));
+    }
 
-1;
+    1;

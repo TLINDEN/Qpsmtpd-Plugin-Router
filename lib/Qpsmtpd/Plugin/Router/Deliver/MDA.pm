@@ -107,7 +107,7 @@ sub deliver {
 
     my $mail        = $self->transaction2message;
     my $virtualuser = $self->rcpt2user($rcpt);
-    my $unixuser    = $self->lookup-alias($virtualuser);
+    my $unixuser    = $self->_lookupalias($virtualuser);
 
     eval {
       local $SIG{ALRM} = sub { die "alarm\n" };
@@ -131,13 +131,13 @@ sub deliver {
 }
 
 
-=head2 lookup-alias($user)
+=head2 _lookupalias($user)
 
 Return matching unix user for $user from aliases.
 
 =cut
 
-sub lookup-alias {
+sub _lookupalias {
   my($self, $user) = @_;
 
   foreach my $rule (@{$self->aliases}) {

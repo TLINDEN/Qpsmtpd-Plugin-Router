@@ -74,7 +74,7 @@ use Qpsmtpd::Plugin::Router::FS;
 use Qpsmtpd::Plugin::Router::Serialize;
 use Qpsmtpd::Plugin::Router::Policy;
 use Qpsmtpd::Plugin::Router::Rewrite;
-use Qpsmtpd::Plugin::Router::Aliases;
+# FIXME: use Qpsmtpd::Plugin::Router::Aliases;
 
 use Moo;
 use strictures 2;
@@ -104,7 +104,7 @@ sub BUILD {
   my $fs  = Qpsmtpd::Plugin::Router::FS->new(spooldir => $spool);
   my $ser = Qpsmtpd::Plugin::Router::Serialize->new(fs => $fs);
   my $pol = Qpsmtpd::Plugin::Router::Policy->new(policyfile => $self->config->transports,
-                                                 defsfile   => $self->config->transport-defs);
+                                                 defsfile   => $self->config->transportdefs);
   my $rew = Qpsmtpd::Plugin::Router::Rewrite->new(rewritingfile => $self->config->rewriting);
   my $al  = Qpsmtpd::Plugin::Router::Aliases->new(aliasfile => $self->config->aliases);
 
@@ -112,7 +112,7 @@ sub BUILD {
   $self->serializer($ser);
   $self->policy($pol); # FIXME: only needed for daemon, instanciate later?
                        # add aliases obj for MDA agent
-  $self->rewrite(rew);
+  $self->rewrite($rew);
   $self->alliases($al);
 }
 
@@ -172,7 +172,7 @@ sub incoming {
 
     # rewrite envelope sender
     my $sender = $transaction->sender;
-    $address = $sender->address;
+    my $address = $sender->address;
     foreach my $rule (@{$self->rewrite}) {
       $address =~ s/$rule->{search}/$rule->{replace}/i;
     }
@@ -204,27 +204,27 @@ sub incoming {
 
   if (scalar keys %domains == 1) {
     # only one, do NOT dissect
-    $self->incoming-transaction($transaction, (keys %domains)[0]);
+    $self->incomingtransaction($transaction, (keys %domains)[0]);
   }
   else {
     # multiple domains, DO dissect
     foreach my $domain (keys %domains) {
-      my $clone = $self->clone-transaction($transaction);
+      my $clone = $self->clonetransaction($transaction);
       $clone->recipients = $domains{$domain}; # now only contains rcpts of this domain
-      $self->incoming-transaction($clone, $domain);
+      $self->incomingtransaction($clone, $domain);
     }
   }
 }
 
 
-=head2 incoming-transaction($transaction, $domain)
+=head2 incomingtransaction($transaction, $domain)
 
 Actually  put the  transaction  into the  incoming queue.  Initializes
 $transaction META flags (starting with m_).
 
 =cut
 
-sub incoming-transaction {
+sub incomingtransaction {
   my($self, $transaction, $domain) = @_;
 
   $transaction->{m_queueid} = $self->queueid; # required by FS and logging

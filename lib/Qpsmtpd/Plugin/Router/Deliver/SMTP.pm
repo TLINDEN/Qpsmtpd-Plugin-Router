@@ -62,6 +62,7 @@ dns lookups, this has to be done by the spooler (Qpsmtpd::Plugin::Router::Queue)
 use Qpsmtpd::Plugin::Router::Resolver;
 use Net::SMTP;
 use Qpsmtpd::Transaction;
+use Try::Tiny;
 
 use Moo;
 use strictures 2;
@@ -113,9 +114,9 @@ transaction.
 
 sub deliver {
   my($self, $transaction) = @_;
-  my (@log, $qid, $code, $ok);
+  my (@log, $qid, $code, $ok, $server);
 
-  foreach my $server (@{$self->servers}) {
+  foreach $server (@{$self->servers}) {
     try {
       ($qid, $code, $ok) = $self->deliver_msg($server, $transaction);
     }
@@ -154,7 +155,7 @@ sub deliver {
   # remove ok recipients
   my @orig = $self->transaction2addrlist($transaction);
   foreach my $rcpt (@{$transaction->recipient}) {
-    if (grep {$rcpt->address eq $_} @ok) {
+    if (grep {$rcpt->address eq $_} @{$ok}) {
       # sent to this one
       $transaction->remove_recipient($rcpt);
     }

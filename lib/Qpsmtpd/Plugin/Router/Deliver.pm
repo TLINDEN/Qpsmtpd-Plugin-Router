@@ -41,7 +41,7 @@ $Qpsmtpd::Plugin::Router::Deliver::VERSION = 0.01;
 
 =head1 NAME
 
-Qpsmtpd::Plugin::Router::Deliver::Deliver - delivery base class.
+Qpsmtpd::Plugin::Router::Deliver - delivery base class.
 
 =head1 SYNOPSIS
 

@@ -51,6 +51,7 @@ WriteMakefile(
                                'Crypt::Random'         => 0,
                                'File::Temp'            => 0,
                                'Moo'                   => 0,
+                               'Throwable'             => 0,
                                'File::Copy::Recursive' => 0,
                                'File::Temp'            => 0,
                                'Fcntl'                 => 0,

@@ -66,7 +66,7 @@ use Qpsmtpd::Plugin::Router::Deliver::SMTP;
 use Qpsmtpd::Plugin::Router::Deliver::MDA;
 use Qpsmtpd::Plugin::Router::Deliver::ToPlugin;
 use Qpsmtpd::Plugin::Router::Deliver::DNS;
-
+use FileHandle;
 
 use Moo;
 use strictures 2;
@@ -135,9 +135,9 @@ sub BUILD {
   }
 }
 
-=head2 route($transport)
+=head2 route($transaction)
 
-Try to route $transport according to $self->policy.
+Try to route $transaction according to $self->policy.
 
 Returns (modified) $transaction or 0 if no rule has matched.
 
@@ -146,7 +146,7 @@ Called from daemonized Router per queue.
 =cut
 
 sub route {
-  my ($self, $transport) = @_;
+  my ($self, $transaction) = @_;
 
   foreach my $rule (@{$self->policy}) {
     if ($transaction->{m_domain} =~ /$rule->{regex}/) {
@@ -165,14 +165,16 @@ sub route {
 sub _parse_defs {
   my ($self) = @_;
   my %vars;
-  if (open D, "<" . $self->defsfile) {
-    while (<D>) {
+
+  my $fh = FileHandle->new;
+  if ($fh->open("<" . $self->defsfile)) {
+    while (<$fh>) {
       chomp;
       next if(/^\s*$/ || /^\s*#/);
       my ($var, $val) = split /\s\s*/, $_, 2;
       $vars{$var} = $val;
     }
-    close D;
+    $fh->close();
     $self->vars(\%vars);
   }
   else {
@@ -188,15 +190,17 @@ sub _parse_policy {
   my ($self) = @_;
   my @policy;
 
-  if (open D, "<" . $self->policyfile) {
-    while (<D>) {
+  my $fh = FileHandle->new;
+  if ($fh->open("<" . $self->policyfile)) {
+    while (<$fh>) {
       chomp;
       next if(/^\s*$/ || /^\s*#/);
       my($if, $then) =  split /\s\s*/, $_, 2;
       push @policy, {regex => $self->_rule_p($if),
                      agent => $self->_deliver_p($then)};
     }
-    close D;
+    $fh->close();
+
     push @policy, $self->_rule_default();
     $self->policy(\@policy);
   }
