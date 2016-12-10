@@ -75,6 +75,14 @@ chomp $pwd;
   ok($S->conserve($t, "$pwd/t/testqfile"), "Freeze object to disk");
 }
 
+# Aliases parser
+{
+  require_ok ('Qpsmtpd::Plugin::Router::Aliases');
 
+  my $A = Qpsmtpd::Plugin::Router::Aliases->new(aliases => ['t/aliasfile']);
+  ok($A, "::ALias obj");
+
+  ok($A->mail2user('prinfo@bar.com') eq 'foo', "Resolve mail address to user");
+}
 
 done_testing();

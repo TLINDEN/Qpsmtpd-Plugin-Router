@@ -149,7 +149,7 @@ sub route {
   my ($self, $transaction) = @_;
 
   foreach my $rule (@{$self->policy}) {
-    if ($transaction->{m_domain} =~ /$rule->{regex}/) {
+    if ($transaction->{m_domain} =~ /$rule->{regex}/x) {
       return $rule->{agent}->deliver($transaction);
     }
   }

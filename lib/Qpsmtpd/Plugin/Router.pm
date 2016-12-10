@@ -74,7 +74,7 @@ use Qpsmtpd::Plugin::Router::FS;
 use Qpsmtpd::Plugin::Router::Serialize;
 use Qpsmtpd::Plugin::Router::Policy;
 use Qpsmtpd::Plugin::Router::Rewrite;
-# FIXME: use Qpsmtpd::Plugin::Router::Aliases;
+use Qpsmtpd::Plugin::Router::Aliases;
 
 use Moo;
 use strictures 2;
